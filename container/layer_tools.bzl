@@ -103,20 +103,24 @@ def assemble(ctx, images, output, stamp = False):
         if image.get("manifest"):
             inputs += [image["manifest"]]
 
-        for i in range(0, len(image["diff_id"])):
-            args += [
-                "--layer=" +
-                "@" + image["diff_id"][i].path +
-                "=@" + image["blobsum"][i].path +
-                # No @, not resolved through utils, always filename.
-                "=" + image["unzipped_layer"][i].path +
-                "=" + image["zipped_layer"][i].path,
-            ]
-        inputs += image["unzipped_layer"]
-        inputs += image["diff_id"]
-        inputs += image["zipped_layer"]
-        inputs += image["blobsum"]
-
+        if image.get("diff_id"):
+            for i in range(0, len(image["diff_id"])):
+                args += [
+                    "--layer=" +
+                    "@" + image["diff_id"][i].path +
+                    "=@" + image["blobsum"][i].path +
+                    # No @, not resolved through utils, always filename.
+                    "=" + image["unzipped_layer"][i].path +
+                    "=" + image["zipped_layer"][i].path,
+                ]
+        if image.get("unzipped_layer"):
+            inputs += image["unzipped_layer"]
+        if image.get("diff_id"):
+            inputs += image["diff_id"]
+        if image.get("zipped_layer"):
+            inputs += image["zipped_layer"]
+        if image.get("blobsum"):
+            inputs += image["blobsum"]
         if image.get("legacy"):
             args += ["--legacy=" + image["legacy"].path]
             inputs += [image["legacy"]]
@@ -179,34 +183,37 @@ def incremental_load(
                 "load_legacy '%s'" % _get_runfile_path(ctx, image["legacy"]),
             ]
 
-        pairs = zip(image["diff_id"], image["unzipped_layer"])
+        if image.get("diff_id") and image.get("unzipped_layer"):
+            pairs = zip(image["diff_id"], image["unzipped_layer"])
 
-        # Import the config and the subset of layers not present
-        # in the daemon.
-        load_statements += [
-            "import_config '%s' %s" % (
-                _get_runfile_path(ctx, image["config"]),
-                " ".join([
-                    "'%s' '%s'" % (
-                        _get_runfile_path(ctx, diff_id),
-                        _get_runfile_path(ctx, unzipped_layer),
-                    )
-                    for (diff_id, unzipped_layer) in pairs
-                ]),
-            ),
-        ]
+            # Import the config and the subset of layers not present
+            # in the daemon.
+            load_statements += [
+                "import_config '%s' %s" % (
+                    _get_runfile_path(ctx, image["config"]),
+                    " ".join([
+                        "'%s' '%s'" % (
+                            _get_runfile_path(ctx, diff_id),
+                            _get_runfile_path(ctx, unzipped_layer),
+                        )
+                        for (diff_id, unzipped_layer) in pairs
+                    ]),
+                ),
+            ]
 
-        # Now tag the imported config with the specified tag.
         tag_reference = tag if not stamp else tag.replace("{", "${")
-        tag_statements += [
-            "tag_layer \"%s\" '%s'" % (
-                # Turn stamp variable references into bash variables.
-                # It is notable that the only legal use of '{' in a
-                # tag would be for stamp variables, '$' is not allowed.
-                tag_reference,
-                _get_runfile_path(ctx, image["config_digest"]),
-            ),
-        ]
+        if image.get("config_digest"):
+            # Now tag the imported config with the specified tag.
+            tag_statements += [
+                "tag_layer \"%s\" '%s'" % (
+                    # Turn stamp variable references into bash variables.
+                    # It is notable that the only legal use of '{' in a
+                    # tag would be for stamp variables, '$' is not allowed.
+                    tag_reference,
+                    _get_runfile_path(ctx, image["config_digest"]),
+                ),
+            ]
+
         if run:
             # Args are embedded into the image, so omitted here.
             run_statements += [
